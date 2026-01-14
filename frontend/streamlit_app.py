@@ -1,6 +1,7 @@
 """
 Ngoerah Smart Assistant - Streamlit Frontend
 Chat interface for internal testing and demo
+Uses native Streamlit components only
 """
 
 import streamlit as st
@@ -15,85 +16,15 @@ import uuid
 st.set_page_config(
     page_title="Ngoerah Smart Assistant",
     page_icon="🏥",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="expanded"
 )
-
-# =============================================================================
-# CUSTOM CSS
-# =============================================================================
-
-st.markdown("""
-<style>
-/* Main container */
-.main {
-    background-color: #f5f7fa;
-}
-
-/* Chat message containers */
-.user-message {
-    background-color: #007bff;
-    color: white;
-    padding: 12px 16px;
-    border-radius: 18px 18px 4px 18px;
-    margin: 8px 0;
-    max-width: 80%;
-    float: right;
-    clear: both;
-}
-
-.assistant-message {
-    background-color: white;
-    color: #333;
-    padding: 12px 16px;
-    border-radius: 18px 18px 18px 4px;
-    margin: 8px 0;
-    max-width: 80%;
-    float: left;
-    clear: both;
-    border: 1px solid #e0e0e0;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
-
-/* Header styling */
-.header-container {
-    display: flex;
-    align-items: center;
-    padding: 1rem 0;
-    border-bottom: 2px solid #007bff;
-    margin-bottom: 1rem;
-}
-
-/* Quick action buttons */
-.stButton > button {
-    border-radius: 20px;
-    border: 1px solid #007bff;
-    color: #007bff;
-    background-color: white;
-    transition: all 0.3s ease;
-}
-
-.stButton > button:hover {
-    background-color: #007bff;
-    color: white;
-}
-
-/* Response time badge */
-.response-time {
-    font-size: 0.75rem;
-    color: #888;
-    text-align: right;
-}
-</style>
-""", unsafe_allow_html=True)
-
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
 API_BASE_URL = "http://localhost:8000"
-
 
 # =============================================================================
 # SESSION STATE INITIALIZATION
@@ -104,7 +35,6 @@ if 'messages' not in st.session_state:
 
 if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
-
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -119,7 +49,7 @@ def send_message_to_api(message: str) -> dict:
                 "message": message,
                 "session_id": st.session_state.session_id
             },
-            timeout=30
+            timeout=120
         )
         
         if response.status_code == 200:
@@ -134,6 +64,13 @@ def send_message_to_api(message: str) -> dict:
     except requests.exceptions.ConnectionError:
         return {
             "response": "❌ Tidak dapat terhubung ke server. Pastikan backend API berjalan di " + API_BASE_URL,
+            "intent": "error",
+            "confidence": 0,
+            "sources": []
+        }
+    except requests.exceptions.Timeout:
+        return {
+            "response": "⏱️ Request timeout. Server mungkin sedang sibuk, coba lagi.",
             "intent": "error",
             "confidence": 0,
             "sources": []
@@ -161,7 +98,6 @@ def check_api_health() -> bool:
 # =============================================================================
 
 with st.sidebar:
-    st.image("https://via.placeholder.com/150x50?text=RSUP+Sanglah", width=150)
     st.title("🏥 Ngoerah Assistant")
     st.caption("Asisten Virtual RSUP Sanglah")
     
@@ -173,7 +109,7 @@ with st.sidebar:
         st.success("✅ API Connected")
     else:
         st.error("❌ API Offline")
-        st.info(f"Pastikan backend berjalan di:\n`{API_BASE_URL}`")
+        st.info(f"Pastikan backend berjalan di: {API_BASE_URL}")
     
     st.divider()
     
@@ -181,21 +117,21 @@ with st.sidebar:
     st.subheader("⚡ Pertanyaan Cepat")
     
     quick_questions = [
-        "Jam besuk ICU kapan?",
-        "Jadwal dokter anak hari ini?",
-        "Bagaimana cara daftar online?",
-        "Lokasi poli gigi dimana?",
-        "Persyaratan BPJS apa saja?"
+        "Bagaimana cara login SIMETRISS?",
+        "Cara registrasi pasien rawat jalan?",
+        "Bagaimana mengatur jadwal dokter?",
+        "Cara mengubah poliklinik?",
+        "Apa itu passphrase?"
     ]
     
     for q in quick_questions:
-        if st.button(q, key=f"quick_{q[:20]}", use_container_width=True):
+        if st.button(q, key=f"quick_{q[:15]}", use_container_width=True):
             st.session_state.pending_question = q
     
     st.divider()
     
     # Clear chat button
-    if st.button("🗑️ Hapus Riwayat Chat", use_container_width=True):
+    if st.button("🗑️ Hapus Riwayat Chat", use_container_width=True, type="secondary"):
         st.session_state.messages = []
         st.session_state.session_id = str(uuid.uuid4())
         st.rerun()
@@ -204,8 +140,8 @@ with st.sidebar:
     
     # Session info
     with st.expander("ℹ️ Info Sesi"):
-        st.code(f"Session ID:\n{st.session_state.session_id[:8]}...")
-        st.write(f"Total pesan: {len(st.session_state.messages)}")
+        st.text(f"Session ID: {st.session_state.session_id[:8]}...")
+        st.text(f"Total pesan: {len(st.session_state.messages)}")
 
 
 # =============================================================================
@@ -213,14 +149,9 @@ with st.sidebar:
 # =============================================================================
 
 # Header
-st.markdown("""
-<div class="header-container">
-    <h1>🏥 Ngoerah Smart Assistant</h1>
-</div>
-""", unsafe_allow_html=True)
-
-st.caption("Asisten Virtual RSUP Prof. dr. I.G.N.G. Ngoerah - Tanya apa saja tentang layanan RS!")
-
+st.title("🏥 Ngoerah Smart Assistant")
+st.caption("Asisten Virtual RSUP Prof. dr. I.G.N.G. Ngoerah Sanglah")
+st.divider()
 
 # Check for pending question from quick action
 if 'pending_question' in st.session_state:
@@ -241,6 +172,7 @@ if 'pending_question' in st.session_state:
             "content": response.get("response", "Maaf, terjadi kesalahan."),
             "sources": response.get("sources", []),
             "intent": response.get("intent", "unknown"),
+            "response_time_ms": response.get("response_time_ms", 0),
             "timestamp": datetime.now()
         })
     st.rerun()
@@ -249,13 +181,29 @@ if 'pending_question' in st.session_state:
 # Display chat messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        st.write(msg["content"])
         
-        # Show sources for assistant messages
-        if msg["role"] == "assistant" and msg.get("sources"):
-            with st.expander("📚 Sumber Referensi"):
-                for src in msg["sources"]:
-                    st.write(f"• {src.get('document', 'N/A')} (Hal. {src.get('page', 'N/A')})")
+        # Show metadata for assistant messages
+        if msg["role"] == "assistant":
+            col1, col2 = st.columns([3, 1])
+            
+            # Show sources if available
+            if msg.get("sources") and len(msg["sources"]) > 0:
+                with col1:
+                    with st.expander("📚 Sumber Referensi"):
+                        for src in msg["sources"]:
+                            doc_name = src.get('document', 'N/A')
+                            page = src.get('page')
+                            similarity = src.get('similarity', 0)
+                            if page:
+                                st.write(f"• {doc_name} (Hal. {page}) - {similarity:.0%}")
+                            else:
+                                st.write(f"• {doc_name} - {similarity:.0%}")
+            
+            # Show response time
+            with col2:
+                if msg.get("response_time_ms"):
+                    st.caption(f"⚡ {msg['response_time_ms']}ms")
 
 
 # Chat input
@@ -268,46 +216,73 @@ if prompt := st.chat_input("Tanya sesuatu tentang RSUP Sanglah..."):
     })
     
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.write(prompt)
     
     # Get response from API
     with st.chat_message("assistant"):
         with st.spinner("🤔 Sedang berpikir..."):
             response = send_message_to_api(prompt)
-            
-        st.markdown(response.get("response", "Maaf, terjadi kesalahan."))
+        
+        answer = response.get("response", "Maaf, terjadi kesalahan.")
+        st.write(answer)
         
         # Store assistant response
         st.session_state.messages.append({
             "role": "assistant",
-            "content": response.get("response", "Maaf, terjadi kesalahan."),
+            "content": answer,
             "sources": response.get("sources", []),
             "intent": response.get("intent", "unknown"),
+            "response_time_ms": response.get("response_time_ms", 0),
             "timestamp": datetime.now()
         })
         
+        col1, col2 = st.columns([3, 1])
+        
         # Show sources if available
-        if response.get("sources"):
-            with st.expander("📚 Sumber Referensi"):
-                for src in response["sources"]:
-                    st.write(f"• {src.get('document', 'N/A')} (Hal. {src.get('page', 'N/A')})")
+        if response.get("sources") and len(response["sources"]) > 0:
+            with col1:
+                with st.expander("📚 Sumber Referensi"):
+                    for src in response["sources"]:
+                        doc_name = src.get('document', 'N/A')
+                        page = src.get('page')
+                        similarity = src.get('similarity', 0)
+                        if page:
+                            st.write(f"• {doc_name} (Hal. {page}) - {similarity:.0%}")
+                        else:
+                            st.write(f"• {doc_name} - {similarity:.0%}")
         
         # Show response time
-        if response.get("response_time_ms"):
-            st.caption(f"⚡ Response time: {response['response_time_ms']}ms")
+        with col2:
+            if response.get("response_time_ms"):
+                st.caption(f"⚡ {response['response_time_ms']}ms")
 
 
-# Empty state
+# Empty state - Welcome message
 if not st.session_state.messages:
     st.info("""
     👋 **Selamat datang di Ngoerah Smart Assistant!**
     
     Saya dapat membantu Anda dengan informasi tentang:
-    - 📅 Jadwal dokter dan poliklinik
-    - 🏥 Jam besuk dan peraturan RS
+    - 📅 Panduan SIMETRISS
+    - 🏥 Registrasi pasien
     - 📝 Prosedur pendaftaran
-    - 💳 Persyaratan BPJS
-    - 📍 Lokasi fasilitas RS
+    - 👨‍⚕️ Jadwal dokter
+    - 📍 Informasi layanan RS
     
     Silakan ketik pertanyaan Anda di bawah atau gunakan **Pertanyaan Cepat** di sidebar.
     """)
+    
+    # Quick start suggestions
+    st.write("**💡 Coba tanyakan:**")
+    suggestions = [
+        "Bagaimana cara login ke SIMETRISS?",
+        "Cara registrasi pasien rawat jalan?",
+        "Bagaimana cara mengatur jadwal dokter?"
+    ]
+    
+    cols = st.columns(len(suggestions))
+    for i, suggestion in enumerate(suggestions):
+        with cols[i]:
+            if st.button(suggestion, key=f"suggest_{i}", use_container_width=True):
+                st.session_state.pending_question = suggestion
+                st.rerun()
