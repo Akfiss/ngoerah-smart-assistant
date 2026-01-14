@@ -1,16 +1,18 @@
 """
-Vector Search Service - Similarity search using pgvector
+Vector Search Service - Similarity search using cosine similarity
 Searches document chunks by embedding similarity
+Works without pgvector extension using Python-based similarity calculation
 """
 
 import logging
+import numpy as np
 from typing import List, Optional
 from dataclasses import dataclass
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.database import DocumentChunk, Document
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,23 @@ class VectorSearchService:
         self.default_threshold = threshold or settings.SIMILARITY_THRESHOLD
         logger.info(f"Vector Search initialized (top_k={self.default_top_k}, threshold={self.default_threshold})")
     
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors"""
+        if vec1 is None or vec2 is None:
+            return 0.0
+        
+        a = np.array(vec1)
+        b = np.array(vec2)
+        
+        dot_product = np.dot(a, b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        
+        return float(dot_product / (norm_a * norm_b))
+    
     def search_similar(
         self, 
         db: Session,
@@ -62,43 +81,46 @@ class VectorSearchService:
         threshold = threshold or self.default_threshold
         
         try:
-            # Convert embedding to string format for pgvector
-            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+            # Get all chunks with embeddings from ready documents
+            chunks = db.query(DocumentChunk, Document).join(
+                Document, DocumentChunk.document_id == Document.id
+            ).filter(
+                Document.status == 'ready',
+                DocumentChunk.embedding.isnot(None)
+            ).all()
             
-            query = text("""
-                SELECT 
-                    dc.id as chunk_id,
-                    dc.content,
-                    dc.page_number,
-                    d.id as document_id,
-                    d.title,
-                    d.filename,
-                    1 - (dc.embedding <=> :query_vector::vector) AS similarity
-                FROM document_chunks dc
-                JOIN documents d ON dc.document_id = d.id
-                WHERE d.status = 'ready'
-                  AND dc.embedding IS NOT NULL
-                  AND 1 - (dc.embedding <=> :query_vector::vector) > :threshold
-                ORDER BY dc.embedding <=> :query_vector::vector
-                LIMIT :top_k
-            """)
+            if not chunks:
+                logger.info("No chunks with embeddings found")
+                return []
             
-            result = db.execute(query, {
-                "query_vector": embedding_str,
-                "threshold": threshold,
-                "top_k": top_k
-            })
+            # Calculate similarity for each chunk
+            results_with_similarity = []
+            for chunk, doc in chunks:
+                similarity = self._cosine_similarity(query_embedding, chunk.embedding)
+                if similarity >= threshold:
+                    results_with_similarity.append({
+                        'chunk': chunk,
+                        'doc': doc,
+                        'similarity': similarity
+                    })
             
+            # Sort by similarity (descending) and take top_k
+            results_with_similarity.sort(key=lambda x: x['similarity'], reverse=True)
+            top_results = results_with_similarity[:top_k]
+            
+            # Convert to SearchResult objects
             search_results = []
-            for row in result.fetchall():
+            for item in top_results:
+                chunk = item['chunk']
+                doc = item['doc']
                 search_results.append(SearchResult(
-                    content=row.content,
-                    page_number=row.page_number,
-                    title=row.title,
-                    filename=row.filename,
-                    similarity=float(row.similarity),
-                    document_id=row.document_id,
-                    chunk_id=row.chunk_id
+                    content=chunk.content,
+                    page_number=chunk.page_number,
+                    title=doc.title,
+                    filename=doc.filename,
+                    similarity=item['similarity'],
+                    document_id=doc.id,
+                    chunk_id=chunk.id
                 ))
             
             logger.info(f"Found {len(search_results)} similar chunks (threshold={threshold})")

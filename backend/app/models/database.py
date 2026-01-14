@@ -1,14 +1,20 @@
 """
 Database models for Ngoerah Smart Assistant
-Using SQLAlchemy ORM with pgvector support
+Using SQLAlchemy ORM with pgvector support (optional)
 """
 
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, JSON, ARRAY
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, declarative_base
-from pgvector.sqlalchemy import Vector
+# Try to import pgvector, fallback to using ARRAY if not available
+try:
+    from pgvector.sqlalchemy import Vector
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
+    Vector = None
 import uuid
 
 Base = declarative_base()
@@ -86,7 +92,7 @@ class DocumentChunk(Base):
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    embedding = Column(Vector(384), nullable=True)  # Dimension for all-MiniLM-L6-v2
+    embedding = Column(ARRAY(Float), nullable=True)  # Changed from Vector for compatibility
     page_number = Column(Integer, nullable=True)
     extra_data = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
